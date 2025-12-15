@@ -67,6 +67,24 @@
 | 图V.1.1 | 相对论理论和非相对论理论与数据的对比 | `MSL/plot_kalpha_vs_z.py` | 相对论与非相对论理论与实验数据的对比 |
 | 图VI-1.4.1 | 康普顿散射中电子获得的能量 | `Compton.py` | 康普顿散射中电子获得能量的分析 |
 
+## 实验数据处理说明
+
+### 模拟人体吸收剂量实验数据处理
+对于模拟人体吸收剂量实验，数据处理脚本位于 `bin\Dose\dose.py`。如需单独处理该实验数据，可直接运行此脚本：
+
+```bash
+python bin\Dose\dose.py
+```
+
+运行后，结果将自动输出到 `bin\Dose\multi_source_dose_results.txt` 文件中。
+
+### 其他实验数据处理
+- **莫塞莱实验**：相关脚本位于 `bin\MSL\` 目录
+- **铝片吸收实验**：相关脚本位于 `bin\Absorb\` 目录
+- **康普顿散射**：相关脚本为 `bin\Compton.py`
+
+所有实验数据处理均可通过运行 `Auto.py` 自动完成，无需单独运行各脚本。
+
 ## 快速开始
 
 ### 1. 安装依赖
@@ -103,6 +121,12 @@ python Auto.py
 - `Figures/图V.1.1 - 相对论理论和非相对论理论与数据的对比.png`
 - `Figures/图VI-1.4.1 - 康普顿散射中电子获得的能量.png`
 
+### 5. 模拟人体吸收剂量实验：
+- 模拟人体吸收剂量实验的数据处理脚本位于 `数据处理\bin\Dose\dose.py`
+- 运行该脚本：`python 数据处理\bin\Dose\dose.py`
+- 处理结果将自动输出到 `数据处理\bin\Dose\multi_source_dose_results.txt`
+- 该脚本会自动读取 `Dose\ICRP145_HumanPhantomsAir\bin\` 目录中的 `.out` 文件进行剂量计算
+
 ## 项目结构
 
 ```
@@ -112,6 +136,7 @@ python Auto.py
 ├── bin/                         # 数据处理脚本目录
 │   ├── 实验报告图片生成对应表.csv # 图片生成配置表
 │   ├── Absorb/                  # 吸收实验数据处理脚本
+│   ├── Dose/                    # 模拟人体吸收剂量实验脚本
 │   ├── MSL/                     # 莫塞莱定律实验数据处理脚本
 │   ├── Compton.py               # 康普顿散射数据处理脚本
 │   └── README.md                # 脚本说明文档
@@ -187,7 +212,7 @@ Auto.py程序的工作流程如下：
 ## 作者
 
 北京大学 陈思源  
-邮箱：siyuan_chen@stu.pku.edu.cn
+邮箱：siyuan_chen@stu.pku.edu.cn  
 电话：+86 181 0128 0283
 
 ## 附录：参考文件系统结构
@@ -203,6 +228,7 @@ Auto.py程序的工作流程如下：
 │   ├── bin\                   # 数据处理脚本
 │   │   ├── 实验报告图片生成对应表.csv
 │   │   ├── Absorb\           # 吸收实验脚本
+│   │   ├── Dose\             # 模拟人体吸收剂量实验脚本
 │   │   ├── MSL\              # 莫塞莱定律实验脚本
 │   │   └── Compton.py        # 康普顿散射脚本
 │   └── Figures\              # 生成的图片保存目录
@@ -263,19 +289,6 @@ Auto.py程序的工作流程如下：
 └── Dose\                     # 模拟人体吸收剂量实验原始数据
     ├── B1\                   # B1剂量数据（本实验未使用）
     └── ICRP145_HumanPhantomsAir\  # ICRP145人体模型数据（实际使用的数据）
-        ├── CMakeLists.txt
-        ├── example_female.out
-        ├── example_male.out
-        ├── example.in
-        ├── History
-        ├── ICRP145phantoms.cc
-        ├── ICRP145Phantoms.out
-        ├── init_vis.mac
-        ├── ionCs137.mac
-        ├── README
-        ├── README_general
-        ├── source.mac
-        ├── vis.mac
         ├── bin\               # 关键数据文件目录
         │   ├── Am241.out     # 镅-241剂量数据（实际使用）
         │   ├── clean.sh
