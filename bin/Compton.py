@@ -3,6 +3,7 @@ Compton.py - 计算康普顿散射中电子吸收的能量
 对于17keV的光子撞击静止电子
 """
 
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
@@ -63,6 +64,7 @@ def electron_recoil_angle(E0_keV, theta):
         return phi
 
 def compton_differential_cross_section(E0_keV, theta, dimensional=True):
+
     """
     计算康普顿散射的微分散射截面（Klein-Nishina公式）
     
@@ -94,9 +96,16 @@ def compton_differential_cross_section(E0_keV, theta, dimensional=True):
         return dsigma_dOmega
     else:
         return dsigma_dOmega_rel
+    
 
-def main():
-    """主函数：计算并绘制康普顿散射电子能量随角度的变化"""
+def generate_figures(output_dir=None, image_name=None):
+    """
+    生成康普顿散射图片并保存到指定目录
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称，如果为None则使用默认名称
+    """
     # 光子初始能量 (keV)
     E0 = 17.0  # keV
     
@@ -285,49 +294,59 @@ def main():
     # 移除r方向刻度线
     ax4.set_rgrids([])
     
-    
     # 调整布局，进一步增加行间距以避免文字重叠
     plt.subplots_adjust(hspace=0.4)
-    #plt.tight_layout(rect=[0, 0, 1, 0.96])
     
-    # 保存图形到同一文件夹
-    output_filename = "Compton_scattering_plots.png"
+    # 保存图形
+    if output_dir:
+        if image_name:
+            output_filename = os.path.join(output_dir, f"{image_name}.png")
+        else:
+            output_filename = os.path.join(output_dir, "Compton_scattering_plots.png")
+    else:
+        if image_name:
+            output_filename = f"{image_name}.png"
+        else:
+            output_filename = "Compton_scattering_plots.png"
+    
     plt.savefig(output_filename, dpi=300, bbox_inches='tight')
-    print(f"图形已保存为: {output_filename}")
+    plt.close()
     
-    # 显示图形
-    plt.show()
+    print(f"康普顿散射图形已保存到: {output_filename}")
     
     # 打印一些关键值
     print(f"光子初始能量: {E0} keV")
     print(f"电子静止能量: 511.0 keV")
-    print("\n关键角度处的电子能量:")
-    print("θ = -π rad: {:.4f} keV".format(compton_electron_energy(E0, -np.pi)))
-    print("θ = -π/2 rad: {:.4f} keV".format(compton_electron_energy(E0, -np.pi/2)))
-    print("θ = 0 rad: {:.4f} keV".format(compton_electron_energy(E0, 0)))
-    print("θ = π/2 rad: {:.4f} keV".format(compton_electron_energy(E0, np.pi/2)))
-    print("θ = π rad: {:.4f} keV".format(compton_electron_energy(E0, np.pi)))
+    print(f"\n最大电子能量 (θ=π): {compton_electron_energy(E0, np.pi):.4f} keV")
+    print(f"电子获得的平均能量: {average_electron_energy:.4f} keV")
     
-    # 计算最大电子能量（对应θ=π）
-    E_max = compton_electron_energy(E0, np.pi)
-    print(f"\n最大电子能量 (θ=π): {E_max:.4f} keV")
-    print(f"此时散射光子能量: {E0 - E_max:.4f} keV")
+    return [output_filename]
+
+
+def main():
+    """主函数：计算并绘制康普顿散射电子能量随角度的变化"""
+    # 调用generate_figures函数，不指定输出目录（保存到脚本所在目录）
+    generated_images = generate_figures()
     
-    # 添加物理解释
-    print("\n--- 物理解释 ---")
+    # 显示图形
+    if generated_images:
+        print(f"\n共生成 {len(generated_images)} 个图片")
+        for img in generated_images:
+            print(f"  - {img}")
+    
+    # 打印一些额外信息
+    E0 = 17.0  # keV
+    print(f"\n--- 物理解释 ---")
     print("1. θ=0（前向散射）: 电子获得最小能量 (0 keV)")
     print("2. θ=π（背向散射）: 电子获得最大能量")
     print("3. 曲线关于θ=0对称")
     print("4. 对于17 keV光子，康普顿效应相对较小")
-    print("   （电子仅获得约1.06 keV，占17 keV的6.2%）")
     
     # 计算百分比
+    E_max = compton_electron_energy(E0, np.pi)
     percentage = (E_max / E0) * 100
     print(f"   电子获得能量占比: {percentage:.2f}%")
-    
-    # 打印电子获得的平均能量
-    print(f"\n电子获得的平均能量: {average_electron_energy:.4f} keV")
-    print(f"平均能量与最大能量之比: {average_electron_energy/E_max:.4f}")
+
 
 if __name__ == "__main__":
     main()

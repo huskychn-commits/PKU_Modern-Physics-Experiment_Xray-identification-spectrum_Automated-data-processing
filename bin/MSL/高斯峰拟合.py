@@ -348,131 +348,149 @@ def process_file(file_path):
     
     return energy_index, event_counts, element_name, total_events
 
+def generate_figures(output_dir=None, image_name=None):
+    """
+    生成高斯峰拟合图片并保存到指定目录
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称，如果为None则使用默认名称
+    """
+    print("=" * 60)
+    print("高斯峰拟合 - 生成图片")
+    print("=" * 60)
+    
+    # 使用默认文件路径（现在脚本在bin/MSL/目录下，需要向上三级）
+    # 获取当前脚本所在目录
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # 向上三级到数据目录，然后进入MSL文件夹
+    data_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    file_path = os.path.join(data_dir, "MSL", "MSL_N4000000_Fe.txt")
+    print(f"数据文件路径: {file_path}")
+    
+    # 处理文件
+    energy_index, event_counts, element_name, total_events = process_file(file_path)
+    
+    if energy_index is None:
+        print("错误: 无法处理文件")
+        return []
+    
+    # 计算index的统计量（加权均值和方差）
+    mean_index, var_index = calculate_index_statistics(energy_index, event_counts)
+    std_index = np.sqrt(var_index)  # 标准差
+    
+    # 执行迭代高斯拟合（只使用3σ以内的数据）
+    print(f"执行迭代高斯拟合...")
+    optimized_mean, optimized_std, optimized_height, loss_history = iterative_gaussian_fit(
+        energy_index, event_counts, initial_mean=mean_index, initial_std=std_index
+    )
+    
+    # 生成图片
+    generated_images = []
+    
+    if MATPLOTLIB_AVAILABLE:
+        try:
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            plt.figure(figsize=(12, 6))
+            
+            # 绘制直方图（无边框，更简洁）
+            plt.bar(energy_index, event_counts, width=1.0, alpha=0.7, color='steelblue', edgecolor=None, label='实验数据')
+            
+            # 计算直接统计的高斯分布
+            std_index = np.sqrt(var_index)
+            
+            # 创建更密集的x轴点用于绘制平滑的高斯曲线
+            x_fine = np.linspace(min(energy_index) - 20, max(energy_index) + 20, 1000)
+            
+            # 直接计算的高斯分布公式: f(x) = A * exp(-(x-μ)²/(2σ²))
+            gaussian_direct = (total_events / (std_index * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_fine - mean_index) / std_index) ** 2)
+            
+            # 绘制直接计算的高斯分布线（灰色，细线条，透明度50%）
+            plt.plot(x_fine, gaussian_direct, color='gray', linewidth=1.5, alpha=0.5, 
+                    label=f'直接计算的高斯分布\nμ={mean_index:.2f}, σ={std_index:.2f}')
+            
+            # 绘制迭代拟合的高斯分布（红线）
+            gaussian_optimized = (total_events / (optimized_std * np.sqrt(2 * np.pi))) * \
+                                np.exp(-0.5 * ((x_fine - optimized_mean) / optimized_std) ** 2)
+            
+            # 绘制迭代拟合的高斯分布线（红色，细线条，透明度70%）
+            plt.plot(x_fine, gaussian_optimized, color='red', linewidth=2.0, alpha=0.7, 
+                    label=f'迭代拟合的高斯分布\nμ={optimized_mean:.2f}, σ={optimized_std:.2f}')
+            
+            # 在图上标记3σ范围
+            lower_bound = optimized_mean - 3 * optimized_std
+            upper_bound = optimized_mean + 3 * optimized_std
+            plt.axvline(x=lower_bound, color='orange', linestyle='--', alpha=0.5, linewidth=1.0, 
+                       label=f'3σ范围: [{lower_bound:.1f}, {upper_bound:.1f}]')
+            plt.axvline(x=upper_bound, color='orange', linestyle='--', alpha=0.5, linewidth=1.0)
+            
+            # 设置图表标题和标签
+            plt.title(f'{element_name} 元素 - 事件数分布与高斯拟合 (总事件数: {total_events:,})', fontsize=14, fontweight='bold')
+            plt.xlabel('能量 Index', fontsize=12)
+            plt.ylabel('事件数', fontsize=12)
+            
+            # 添加网格
+            plt.grid(True, alpha=0.3, linestyle='--')
+            
+            # 自动调整x轴范围
+            plt.xlim(min(energy_index) - 5, max(energy_index) + 5)
+            
+            # 添加图例
+            plt.legend(fontsize=10, loc='upper right')
+            
+            # 添加统计信息文本
+            stats_text = f'总事件数: {total_events:,}\n直接计算:\n  均值 μ: {mean_index:.2f}\n  标准差 σ: {std_index:.2f}\n迭代拟合:\n  均值 μ: {optimized_mean:.2f}\n  标准差 σ: {optimized_std:.2f}'
+            plt.text(0.02, 0.98, stats_text, 
+                     transform=plt.gca().transAxes, fontsize=10,
+                     verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # 调整布局
+            plt.tight_layout()
+            
+            # 保存图片
+            if output_dir:
+                if image_name:
+                    output_filename = os.path.join(output_dir, f"{image_name}.png")
+                else:
+                    output_filename = os.path.join(output_dir, "高斯峰拟合_试运行.png")
+            else:
+                if image_name:
+                    output_filename = f"{image_name}.png"
+                else:
+                    output_filename = "高斯峰拟合_试运行.png"
+            
+            plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+            generated_images.append(output_filename)
+            print(f"图片已保存到: {output_filename}")
+            plt.close()
+            
+        except Exception as e:
+            print(f"绘图失败: {e}")
+    
+    print("\n" + "=" * 60)
+    print(f"生成完成！共生成 {len(generated_images)} 个图片")
+    print("=" * 60)
+    
+    return generated_images
+
 def main():
     """
     主函数
     """
-    print("=" * 60)
-    print("高斯峰拟合脚本 - 基础功能")
-    print("=" * 60)
+    # 调用generate_figures函数，不指定输出目录（保存到脚本所在目录）
+    generated_images = generate_figures()
     
-    # 显示当前环境信息
-    print(f"Python可执行文件: {sys.executable}")
-    print(f"Matplotlib可用: {MATPLOTLIB_AVAILABLE}")
-    
-    # 检查是否有命令行参数
-    if len(sys.argv) > 1:
-        # 使用命令行参数指定的文件
-        file_paths = sys.argv[1:]
-    else:
-        # 使用默认文件路径（相对路径）
-        # 脚本位于: 数据/数据处理/MSL/高斯峰拟合.py
-        # 数据文件位于: 数据/MSL/
-        # 相对路径: ../../MSL/
-        file_path = '../../MSL/MSL_N4000000_Fe.txt'
-        file_paths = [file_path]
-    
-    all_results = []
-    
-    for file_path in file_paths:
-        print(f"\n处理文件: {file_path}")
-        print("-" * 40)
-        
-        # 1. 从文件路径提取元素名
-        element_name = extract_element_name(file_path)
-        print(f"1. 从文件路径提取元素名: {element_name}")
-        
-        # 2. 读取数据
-        print(f"2. 读取数据文件")
-        try:
-            energy_index, event_counts = read_data(file_path)
-            print(f"   读取成功: {len(energy_index)} 个数据点")
-            
-            # 显示前5个数据点
-            print(f"   前5个数据点:")
-            for i in range(min(5, len(energy_index))):
-                print(f"     Index: {energy_index[i]:.0f}, 事件数: {event_counts[i]:.0f}")
-        except Exception as e:
-            print(f"   读取失败: {e}")
-            # 尝试使用正确的相对路径
-            print("   尝试使用正确的相对路径...")
-            # 从示例路径提取文件名
-            file_name = os.path.basename(file_path)
-            # 脚本位于: 数据/数据处理/MSL/高斯峰拟合.py
-            # 数据文件位于: 数据/MSL/
-            # 相对路径: ../../MSL/
-            relative_path = f'../../MSL/{file_name}'
-            try:
-                energy_index, event_counts = read_data(relative_path)
-                print(f"   使用相对路径读取成功: {len(energy_index)} 个数据点")
-            except Exception as e2:
-                print(f"   相对路径也失败: {e2}")
-                continue
-        
-        # 3. 计算总事件数
-        total_events = calculate_total_events(event_counts)
-        print(f"3. 计算总事件数: {total_events:,.0f}")
-        
-        # 4. 计算index的统计量（加权均值和方差）
-        mean_index, var_index = calculate_index_statistics(energy_index, event_counts)
-        std_index = np.sqrt(var_index)  # 标准差
-        print(f"4. Index统计量:")
-        print(f"   加权均值: {mean_index:.4f}")
-        print(f"   加权方差: {var_index:.4f}")
-        print(f"   标准差: {std_index:.4f}")
-        
-        # 5. 执行迭代高斯拟合（只使用3σ以内的数据）
-        print(f"5. 执行迭代高斯拟合...")
-        optimized_mean, optimized_std, optimized_height, loss_history = iterative_gaussian_fit(
-            energy_index, event_counts, initial_mean=mean_index, initial_std=std_index
-        )
-        
-        # 计算优化后的方差
-        optimized_var = optimized_std ** 2
-        
-        all_results.append((file_path, element_name, total_events, mean_index, var_index, optimized_mean, optimized_var, optimized_height))
-        
-        # 6. 绘制直方图（包含直接计算和迭代拟合的高斯分布）
-        print(f"6. 绘制 {element_name} 元素的直方图...")
-        plot_histogram(energy_index, event_counts, element_name, total_events, mean_index, var_index, 
-                      optimized_mean, optimized_std)
-    
-    # 显示所有处理结果摘要
-    if all_results:
-        print("\n" + "=" * 60)
-        print("处理结果摘要:")
-        print("=" * 60)
-        for result in all_results:
-            if len(result) == 8:  # 包含优化后的参数和峰高
-                file_path, element_name, total_events, mean_index, var_index, optimized_mean, optimized_var, optimized_height = result
-                optimized_std = np.sqrt(optimized_var)
-                # 计算直接计算的峰高：A = N / (σ * √(2π))
-                direct_height = total_events / (np.sqrt(var_index) * np.sqrt(2 * np.pi))
-                print(f"文件: {os.path.basename(file_path)}")
-                print(f"元素: {element_name}")
-                print(f"总事件数: {total_events:,.0f}")
-                print(f"直接计算 - 均值: {mean_index:.4f}, 方差: {var_index:.4f}, 标准差: {np.sqrt(var_index):.4f}, 峰高: {direct_height:.2f}")
-                print(f"迭代拟合 - 均值: {optimized_mean:.4f}, 方差: {optimized_var:.4f}, 标准差: {optimized_std:.4f}, 峰高: {optimized_height:.2f}")
-                print(f"参数变化 - Δμ: {optimized_mean - mean_index:.4f}, Δσ: {optimized_std - np.sqrt(var_index):.4f}, Δ峰高: {optimized_height - direct_height:.2f}")
-            else:
-                file_path, element_name, total_events, mean_index, var_index = result
-                print(f"文件: {os.path.basename(file_path)}")
-                print(f"元素: {element_name}")
-                print(f"总事件数: {total_events:,.0f}")
-                print(f"Index加权均值: {mean_index:.4f}")
-                print(f"Index加权方差: {var_index:.4f}")
-                print(f"Index标准差: {np.sqrt(var_index):.4f}")
-            print("-" * 40)
-    
-    print("\n" + "=" * 60)
-    print("完成！高斯峰的参数拟合完毕。")
-    print("=" * 60)
-    
-    # 使用说明
-    if len(sys.argv) == 1:
-        print("\n使用说明:")
-        print("可以通过命令行参数指定文件: python 高斯峰拟合.py 文件路径")
-        print("示例: python 高斯峰拟合.py ..\\MSL\\MSL_N4000000_Ag.txt")
+    # 显示图形
+    if generated_images:
+        print(f"\n共生成 {len(generated_images)} 个图片")
+        for img in generated_images:
+            print(f"  - {img}")
 
 if __name__ == "__main__":
     main()

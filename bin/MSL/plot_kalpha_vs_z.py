@@ -198,10 +198,16 @@ def plot_kalpha_vs_z(db, Z_list, exp_list, nonrel_list, rel_list):
     plt.show()
 
 
-def main():
-    """主函数"""
+def generate_figures(output_dir=None, image_name=None):
+    """
+    生成核电荷数与Kα线能量关系图并保存到指定目录
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称，如果为None则使用默认名称
+    """
     print("=" * 60)
-    print("核电荷数与Kα线能量关系图绘制程序")
+    print("核电荷数与Kα线能量关系图绘制程序 - 生成图片")
     print("=" * 60)
     
     # 初始化元素数据库
@@ -223,9 +229,52 @@ def main():
         exp_str = f"{exp_list[i]:.3f}" if exp_list[i] is not None else "N/A"
         print(f"{Z_list[i]:^9} | {exp_str:^12} | {nonrel_list[i]:^18.3f} | {rel_list[i]:^18.3f}")
     
-    # 绘制图形
-    print("\n正在绘制图形...")
-    plot_kalpha_vs_z(db, Z_list, exp_list, nonrel_list, rel_list)
+    # 生成图片
+    generated_images = []
+    
+    # 创建图形
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # 在新的axis上绘图
+    plot_kalpha_on_axis(ax, db, Z_list, exp_list, nonrel_list, rel_list)
+    
+    # 调整布局
+    plt.tight_layout()
+    
+    # 保存图片
+    if output_dir:
+        if image_name:
+            output_filename = os.path.join(output_dir, f"{image_name}.png")
+        else:
+            output_filename = os.path.join(output_dir, "相对论非相对论理论对比.png")
+    else:
+        if image_name:
+            output_filename = f"{image_name}.png"
+        else:
+            output_filename = "相对论非相对论理论对比.png"
+    
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    generated_images.append(output_filename)
+    print(f"图片已保存到: {output_filename}")
+    plt.close()
+    
+    print("\n" + "=" * 60)
+    print(f"生成完成！共生成 {len(generated_images)} 个图片")
+    print("=" * 60)
+    
+    return generated_images
+
+
+def main():
+    """主函数"""
+    # 调用generate_figures函数，不指定输出目录（保存到脚本所在目录）
+    generated_images = generate_figures()
+    
+    # 显示图形
+    if generated_images:
+        print(f"\n共生成 {len(generated_images)} 个图片")
+        for img in generated_images:
+            print(f"  - {img}")
     
     print("程序执行完毕！")
 

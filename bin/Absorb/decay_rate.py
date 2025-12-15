@@ -550,20 +550,28 @@ def print_summary(ratio_data, decay_coefficients, zero_layer_positions, fit_erro
         print(f"分析元素数量: {len(decay_coefficients)}")
 
 
-def main():
+def generate_figures(output_dir=None, image_name=None):
     """
-    主函数
+    生成所有图片并保存到指定目录
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称，如果为None则生成所有图片
     """
     print("=" * 60)
-    print("衰减率分析程序")
+    print("衰减率分析程序 - 生成图片")
     print("=" * 60)
+    
+    if image_name:
+        print(f"指定生成图片: {image_name}")
     
     # 1. 加载数据
     print("1. 加载处理后的数据...")
     data_dict = load_processed_data()
     
     if data_dict is None:
-        return
+        print("错误: 无法加载数据")
+        return []
     
     print(f"   加载了 {len(data_dict)} 个元素的数据")
     
@@ -573,7 +581,7 @@ def main():
     
     if not ratio_data:
         print("错误: 无法计算事件数比值")
-        return
+        return []
     
     print(f"   计算了 {len(ratio_data)} 个元素的事件数比值")
     
@@ -581,28 +589,265 @@ def main():
     print("\n3. 进行指数衰减拟合 (y = exp(-kN))...")
     decay_coefficients, fit_errors = fit_decay_coefficients(ratio_data)
     
-    # 4. 打印摘要
-    print_summary(ratio_data, decay_coefficients, zero_layer_positions, fit_errors)
+    # 生成图片列表
+    generated_images = []
     
-    # 5. 绘制事件数比值图
-    print("\n4. 绘制事件数比值图...")
-    plot_event_ratios(ratio_data, decay_coefficients)
+    # 根据image_name参数决定生成哪个图片
+    generate_all = image_name is None
+    # 使用精确匹配逻辑
+    if image_name:
+        generate_fig1 = image_name == "图III.2.1 - 不同靶材特征谱线在铝板中的衰减"
+        generate_fig2 = image_name == "图III.2.2 - 不同靶材特征谱线在铝板中的衰减系数"
+        generate_fig3 = image_name == "图III.2.3 - 经验标度率的确定"
+    else:
+        generate_fig1 = True
+        generate_fig2 = True
+        generate_fig3 = True
     
-    # 6. 绘制衰减系数k vs 无衰减峰位置图
-    print("\n5. 绘制衰减系数k vs 无衰减峰位置图...")
-    plot_decay_coefficients(decay_coefficients, zero_layer_positions, fit_errors)
+    # 4. 绘制事件数比值图（图III.2.1）
+    if generate_fig1:
+        print("\n4. 绘制事件数比值图...")
+        if ratio_data and decay_coefficients:
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            # 创建图形
+            plt.figure(figsize=(14, 8))
+            
+            # 定义颜色和标记样式
+            colors = plt.cm.tab20(np.linspace(0, 1, len(ratio_data)))
+            markers = ['o', 's', '^', 'v', '<', '>', 'p', '*', 'h', 'H', 'D', 'd', 'P', 'X']
+            
+            # 按照衰减系数k从大到小排序元素
+            sorted_elements = sorted(
+                ratio_data.items(),
+                key=lambda x: decay_coefficients.get(x[0], 0.0),
+                reverse=True
+            )
+            
+            # 绘制每个元素的事件数比值
+            for i, (element_name, (layers, ratios)) in enumerate(sorted_elements):
+                color = colors[i % len(colors)]
+                marker = markers[i % len(markers)]
+                
+                plt.plot(layers, ratios, marker=marker, color=color, linewidth=0, 
+                         markersize=8, label=f'{element_name}', alpha=0.8)
+                
+                k = decay_coefficients.get(element_name, 0.0)
+                if k > 0:
+                    N_fit = np.linspace(min(layers), max(layers), 100)
+                    y_fit = exponential_decay_fit(N_fit, k)
+                    plt.plot(N_fit, y_fit, color=color, linestyle='-', linewidth=2, alpha=0.8)
+            
+            # 设置坐标轴标签
+            plt.xlabel('衰减片层数 (N)', fontsize=14, fontweight='bold')
+            plt.ylabel('事件数比值 (事件数/无衰减事件数)', fontsize=14, fontweight='bold')
+            plt.title('X射线标识谱 - 事件数比值随衰减片层数变化 (拟合: y = exp(-kN))', fontsize=16, fontweight='bold')
+            plt.grid(True, alpha=0.3, linestyle='--')
+            plt.legend(loc='best', fontsize=11, ncol=2)
+            plt.ylim(0, 1.1)
+            plt.tight_layout()
+            
+            # 保存图像
+            if output_dir:
+                if image_name and generate_fig1 and not generate_fig2 and not generate_fig3:
+                    # 如果只生成图片1，使用image_name作为文件名
+                    output_image = os.path.join(output_dir, f"{image_name}.png")
+                else:
+                    output_image = os.path.join(output_dir, "event_ratio_plot.png")
+            else:
+                if image_name and generate_fig1 and not generate_fig2 and not generate_fig3:
+                    output_image = f"{image_name}.png"
+                else:
+                    output_image = os.path.join(os.path.dirname(os.path.abspath(__file__)), "event_ratio_plot.png")
+            
+            plt.savefig(output_image, dpi=300, bbox_inches='tight')
+            generated_images.append(output_image)
+            print(f"  事件数比值图已保存到: {output_image}")
+            plt.close()
     
-    # 7. 保存衰减系数数据到CSV文件
-    print("\n6. 保存衰减系数数据到CSV文件...")
-    save_decay_coefficients_csv(decay_coefficients, zero_layer_positions, fit_errors)
+    # 5. 绘制衰减系数k vs 无衰减峰位置图（图III.2.2）
+    if generate_fig2:
+        print("\n5. 绘制衰减系数k vs 无衰减峰位置图...")
+        if decay_coefficients and zero_layer_positions:
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            # 准备数据
+            elements = []
+            peak_positions = []
+            k_values = []
+            k_errors = []
+            
+            for element_name, k in decay_coefficients.items():
+                if element_name in zero_layer_positions:
+                    elements.append(element_name)
+                    peak_positions.append(zero_layer_positions[element_name])
+                    k_values.append(k)
+                    k_errors.append(fit_errors.get(element_name, 0.0))
+            
+            if elements:
+                # 创建图形
+                plt.figure(figsize=(12, 8))
+                
+                # 绘制散点图
+                plt.errorbar(peak_positions, k_values, yerr=k_errors, fmt='o', 
+                             markersize=10, capsize=5, alpha=0.8, color='steelblue')
+                
+                # 添加元素标签
+                for i, (element, x, y) in enumerate(zip(elements, peak_positions, k_values)):
+                    plt.annotate(element, (x, y), xytext=(5, 5), textcoords='offset points',
+                                fontsize=10, fontweight='bold', alpha=0.8)
+                
+                # 设置坐标轴标签
+                plt.xlabel('谱线能量 (0层衰减片对应的峰位置)', fontsize=14, fontweight='bold')
+                plt.ylabel('衰减系数 (拟合: y = exp(-kN))', fontsize=14, fontweight='bold')
+                plt.title('X射线标识谱 - 衰减系数 vs 谱线能量', fontsize=16, fontweight='bold')
+                plt.grid(True, alpha=0.3, linestyle='--')
+                plt.tight_layout()
+                
+                # 保存图像
+                if output_dir:
+                    if image_name and generate_fig2 and not generate_fig1 and not generate_fig3:
+                        # 如果只生成图片2，使用image_name作为文件名
+                        output_image = os.path.join(output_dir, f"{image_name}.png")
+                    else:
+                        output_image = os.path.join(output_dir, "decay_coefficient_plot.png")
+                else:
+                    if image_name and generate_fig2 and not generate_fig1 and not generate_fig3:
+                        output_image = f"{image_name}.png"
+                    else:
+                        output_image = os.path.join(os.path.dirname(os.path.abspath(__file__)), "decay_coefficient_plot.png")
+                
+                plt.savefig(output_image, dpi=300, bbox_inches='tight')
+                generated_images.append(output_image)
+                print(f"  衰减系数图已保存到: {output_image}")
+                plt.close()
     
-    # 8. 绘制log-log关系图
-    print("\n7. 绘制log-log关系图 (验证衰减系数 ∝ 能量^{-3})...")
-    plot_log_log_relationship(decay_coefficients, zero_layer_positions, fit_errors)
+    # 6. 绘制log-log关系图（图III.2.3）
+    if generate_fig3:
+        print("\n6. 绘制log-log关系图 (验证衰减系数 ∝ 能量^{-3})...")
+        if decay_coefficients and zero_layer_positions:
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            # 准备数据
+            elements = []
+            log_energies = []
+            log_k_values = []
+            log_k_errors = []
+            
+            for element_name, k in decay_coefficients.items():
+                if element_name in zero_layer_positions:
+                    energy = zero_layer_positions[element_name]
+                    if energy > 0 and k > 0:
+                        elements.append(element_name)
+                        log_energies.append(np.log10(energy))
+                        log_k_values.append(np.log10(k))
+                        err = fit_errors.get(element_name, 0.0)
+                        if k > 0 and err > 0:
+                            log_err = err / (k * np.log(10))
+                        else:
+                            log_err = 0.0
+                        log_k_errors.append(log_err)
+            
+            if len(elements) >= 2:
+                # 创建图形
+                plt.figure(figsize=(12, 8))
+                
+                # 绘制散点图
+                plt.errorbar(log_energies, log_k_values, yerr=log_k_errors, fmt='o', 
+                             markersize=10, capsize=5, alpha=0.8, color='coral')
+                
+                # 添加元素标签
+                for i, (element, x, y) in enumerate(zip(elements, log_energies, log_k_values)):
+                    plt.annotate(element, (x, y), xytext=(5, 5), textcoords='offset points',
+                                fontsize=10, fontweight='bold', alpha=0.8)
+                
+                # 线性拟合
+                log_E = np.array(log_energies)
+                log_k = np.array(log_k_values)
+                A = np.vstack([log_E, np.ones(len(log_E))]).T
+                weights = 1.0 / np.array(log_k_errors) if np.all(np.array(log_k_errors) > 0) else None
+                
+                if weights is not None:
+                    W = np.diag(weights)
+                    coeffs = np.linalg.lstsq(A.T @ W @ A, A.T @ W @ log_k, rcond=None)[0]
+                else:
+                    coeffs = np.linalg.lstsq(A, log_k, rcond=None)[0]
+                
+                slope = coeffs[0]
+                intercept = coeffs[1]
+                
+                # 计算相关系数
+                correlation_matrix = np.corrcoef(log_E, log_k)
+                r_value = correlation_matrix[0, 1] if correlation_matrix.shape == (2, 2) else 0
+                
+                # 绘制拟合直线
+                x_fit = np.linspace(min(log_E), max(log_E), 100)
+                y_fit = slope * x_fit + intercept
+                plt.plot(x_fit, y_fit, 'r-', linewidth=2, alpha=0.8, 
+                         label=f'拟合: log(k) = {slope:.3f}·log(E) + {intercept:.3f}\nR = {r_value:.4f}')
+                
+                # 绘制理论直线
+                mean_log_E = np.mean(log_E)
+                mean_log_k = np.mean(log_k)
+                theoretical_intercept = mean_log_k - (-3) * mean_log_E
+                y_theory = -3 * x_fit + theoretical_intercept
+                plt.plot(x_fit, y_theory, 'b--', linewidth=2, alpha=0.6, 
+                         label='理论: log(k) = -3·log(E) + 常数')
+                
+                # 设置坐标轴标签
+                plt.xlabel('log(谱线能量)', fontsize=14, fontweight='bold')
+                plt.ylabel('log(衰减系数)', fontsize=14, fontweight='bold')
+                plt.title('X射线标识谱 - log(衰减系数) vs log(谱线能量) 关系', fontsize=16, fontweight='bold')
+                plt.grid(True, alpha=0.3, linestyle='--')
+                plt.legend(loc='best', fontsize=12)
+                plt.tight_layout()
+                
+                # 保存图像
+                if output_dir:
+                    if image_name and generate_fig3 and not generate_fig1 and not generate_fig2:
+                        # 如果只生成图片3，使用image_name作为文件名
+                        output_image = os.path.join(output_dir, f"{image_name}.png")
+                    else:
+                        output_image = os.path.join(output_dir, "log_log_relationship_plot.png")
+                else:
+                    if image_name and generate_fig3 and not generate_fig1 and not generate_fig2:
+                        output_image = f"{image_name}.png"
+                    else:
+                        output_image = os.path.join(os.path.dirname(os.path.abspath(__file__)), "log_log_relationship_plot.png")
+                
+                plt.savefig(output_image, dpi=300, bbox_inches='tight')
+                generated_images.append(output_image)
+                print(f"  log-log关系图已保存到: {output_image}")
+                plt.close()
     
     print("\n" + "=" * 60)
-    print("分析完成！")
+    print(f"生成完成！共生成 {len(generated_images)} 个图片")
     print("=" * 60)
+    
+    return generated_images
+
+
+def main():
+    """
+    主函数
+    """
+    # 调用generate_figures函数，不指定输出目录（保存到脚本所在目录）
+    generate_figures()
 
 
 if __name__ == "__main__":

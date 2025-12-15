@@ -55,10 +55,10 @@ def get_msl_folder_path():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 构建MSL文件夹路径
-    # 当前目录: D:\同步文件\课程作业\2025秋\近物实验\X射线标识谱\数据\数据处理\MSL
-    # MSL数据目录: D:\同步文件\课程作业\2025秋\近物实验\X射线标识谱\数据\MSL
-    # 需要向上两级到数据目录，然后进入MSL
-    data_dir = os.path.dirname(os.path.dirname(current_dir))
+    # 当前目录: D:\课程作业\2025秋\近物实验\X射线标识谱\数据\数据处理\bin\MSL
+    # MSL数据目录: D:\课程作业\2025秋\近物实验\X射线标识谱\数据\MSL
+    # 需要向上三级到数据目录，然后进入MSL
+    data_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
     msl_path = os.path.join(data_dir, "MSL")
     
     return msl_path
@@ -548,12 +548,240 @@ def moseley_plot(results):
     return sigma, r_squared
 
 
+def generate_figures(output_dir=None, image_name=None):
+    """
+    生成所有图片并保存到指定目录
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称，如果为None则生成所有图片
+    """
+    print("=" * 60)
+    print("MSL数据处理程序 - 生成图片")
+    print("=" * 60)
+    
+    # 1. 获取MSL文件夹路径
+    print("1. 获取MSL文件夹路径...")
+    msl_path = get_msl_folder_path()
+    print(f"   MSL路径: {msl_path}")
+    
+    # 检查路径是否存在
+    if not os.path.exists(msl_path):
+        print(f"错误: MSL文件夹不存在 - {msl_path}")
+        print("请确保MSL文件夹位于正确的位置")
+        return []
+    
+    # 2. 查找所有.txt文件
+    print("\n2. 查找MSL文件夹中的.txt文件...")
+    txt_files = find_txt_files(msl_path)
+    
+    if not txt_files:
+        print("  未找到任何.txt文件")
+        return []
+    
+    print(f"  找到 {len(txt_files)} 个.txt文件")
+    
+    # 3. 处理每个文件
+    print("\n3. 处理文件并进行峰值拟合...")
+    results = []
+    
+    for i, file_path in enumerate(txt_files):
+        print(f"\n[{i+1}/{len(txt_files)}] ", end="")
+        result = process_single_file(file_path, use_gaussian_module=True)
+        if result:
+            results.append(result)
+    
+    if not results:
+        print("没有成功处理任何文件")
+        return []
+    
+    # 4. 绘制图像并保存
+    generated_images = []
+    
+    # 根据image_name参数决定生成哪个图片
+    if image_name is None or "谱线与原子序数关系图" in image_name:
+        print("\n4. 绘制peak_position随原子序数变化的图像...")
+        atomic_numbers = []
+        peak_positions = []
+        peak_stds = []
+        element_symbols = []
+        
+        for result in results:
+            element_symbol = result['element']
+            atomic_number = get_atomic_number(element_symbol)
+            
+            if atomic_number is not None:
+                atomic_numbers.append(atomic_number)
+                peak_positions.append(result['peak_position'])
+                peak_stds.append(result['peak_std'])
+                element_symbols.append(element_symbol)
+            else:
+                print(f"  警告: 无法获取元素 {element_symbol} 的原子序数，跳过")
+        
+        if atomic_numbers:
+            # 创建图形
+            plt.figure(figsize=(12, 8))
+            
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            # 绘制误差横线
+            for z, peak, std in zip(atomic_numbers, peak_positions, peak_stds):
+                plt.hlines(y=peak, xmin=z-0.3, xmax=z+0.3, color='red', linewidth=1.5, alpha=0.7)
+                plt.hlines(y=peak+std, xmin=z-0.2, xmax=z+0.2, color='gray', linewidth=1, alpha=0.6, linestyle='--')
+                plt.hlines(y=peak-std, xmin=z-0.2, xmax=z+0.2, color='gray', linewidth=1, alpha=0.6, linestyle='--')
+                plt.vlines(x=z, ymin=peak-std, ymax=peak+std, color='gray', linewidth=1, alpha=0.6)
+            
+            # 添加元素符号标签
+            for z, peak, symbol in zip(atomic_numbers, peak_positions, element_symbols):
+                plt.text(z, peak + 5, symbol, fontsize=10, ha='center', va='bottom', alpha=0.8)
+            
+            # 设置坐标轴标签
+            plt.xlabel('原子序数 (Z)', fontsize=14)
+            plt.ylabel('峰位置 (能量Index)', fontsize=14)
+            plt.title('MSL数据：峰位置随原子序数变化', fontsize=16, fontweight='bold')
+            plt.grid(True, alpha=0.3, linestyle='--')
+            
+            # 添加图例
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color='red', label='峰位置', linewidth=1.5, alpha=0.7),
+                Line2D([0], [0], color='gray', linestyle='--', label='E±σ范围', linewidth=1, alpha=0.6)
+            ]
+            plt.legend(handles=legend_elements, loc='upper left', fontsize=12)
+            
+            # 设置坐标轴范围
+            plt.xlim(min(atomic_numbers) - 2, max(atomic_numbers) + 2)
+            plt.ylim(min(peak_positions) - 20, max(peak_positions) + 30)
+            plt.tight_layout()
+            
+            # 保存图像
+            if output_dir:
+                if image_name:
+                    output_image = os.path.join(output_dir, f"{image_name}.png")
+                else:
+                    output_image = os.path.join(output_dir, "msl_peak_vs_atomic_number.png")
+            else:
+                if image_name:
+                    output_image = f"{image_name}.png"
+                else:
+                    output_image = "msl_peak_vs_atomic_number.png"
+            plt.savefig(output_image, dpi=300, bbox_inches='tight')
+            generated_images.append(output_image)
+            print(f"  图像已保存到: {output_image}")
+            plt.close()
+    
+    if image_name is None or "莫塞莱定律" in image_name:
+        print("\n5. 绘制莫塞莱定律图像：√E vs Z...")
+        atomic_numbers = []
+        peak_positions = []
+        peak_stds = []
+        element_symbols = []
+        
+        for result in results:
+            element_symbol = result['element']
+            atomic_number = get_atomic_number(element_symbol)
+            
+            if atomic_number is not None:
+                atomic_numbers.append(atomic_number)
+                peak_positions.append(result['peak_position'])
+                peak_stds.append(result['peak_std'])
+                element_symbols.append(element_symbol)
+        
+        if atomic_numbers:
+            # 计算√E
+            sqrt_E = np.sqrt(peak_positions)
+            sqrt_E_errors = [std / (2 * np.sqrt(E)) if E > 0 else 0 for E, std in zip(peak_positions, peak_stds)]
+            
+            # 线性拟合
+            Z_array = np.array(atomic_numbers)
+            sqrt_E_array = np.array(sqrt_E)
+            coefficients = np.polyfit(Z_array, sqrt_E_array, 1)
+            a, b = coefficients
+            sigma = -b / a
+            
+            # 创建图形
+            plt.figure(figsize=(12, 8))
+            
+            # 设置中文字体
+            try:
+                plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+                plt.rcParams['axes.unicode_minus'] = False
+            except:
+                pass
+            
+            # 绘制数据点
+            for z, sqrt_e, sqrt_err in zip(Z_array, sqrt_E_array, sqrt_E_errors):
+                plt.hlines(y=sqrt_e, xmin=z-0.3, xmax=z+0.3, color='red', linewidth=1.5, alpha=0.7)
+                plt.hlines(y=sqrt_e+sqrt_err, xmin=z-0.2, xmax=z+0.2, color='gray', linewidth=1, alpha=0.6, linestyle='--')
+                plt.hlines(y=sqrt_e-sqrt_err, xmin=z-0.2, xmax=z+0.2, color='gray', linewidth=1, alpha=0.6, linestyle='--')
+                plt.vlines(x=z, ymin=sqrt_e-sqrt_err, ymax=sqrt_e+sqrt_err, color='gray', linewidth=1, alpha=0.6)
+            
+            # 绘制拟合线
+            Z_fit = np.linspace(min(Z_array) - 2, max(Z_array) + 2, 100)
+            sqrt_E_fit = a * Z_fit + b
+            plt.plot(Z_fit, sqrt_E_fit, 'g--', linewidth=1.5, alpha=0.5, label=f'线性拟合: √E = {a:.3f}Z + {b:.3f}', zorder=4)
+            
+            # 标记Z轴截距
+            plt.axvline(x=sigma, color='blue', linestyle=':', linewidth=2, alpha=0.7, label=f'屏蔽常数 σ = {sigma:.2f}')
+            
+            # 添加元素符号标签
+            for z, sqrt_e, symbol in zip(Z_array, sqrt_E_array, element_symbols):
+                plt.text(z, sqrt_e + 0.2, symbol, fontsize=10, ha='center', va='bottom', alpha=0.8)
+            
+            # 设置坐标轴标签
+            plt.xlabel('原子序数 (Z)', fontsize=14)
+            plt.ylabel('√E (√能量Index)', fontsize=14)
+            plt.title('莫塞莱定律：√E vs Z 线性拟合', fontsize=16, fontweight='bold')
+            plt.grid(True, alpha=0.3, linestyle='--')
+            
+            # 添加图例
+            from matplotlib.lines import Line2D
+            legend_elements = [
+                Line2D([0], [0], color='red', label='√E 位置', linewidth=1.5, alpha=0.7),
+                Line2D([0], [0], color='gray', linestyle='--', label='√E±σ范围', linewidth=1, alpha=0.6),
+                Line2D([0], [0], color='green', linestyle='--', label=f'线性拟合: √E = {a:.3f}Z + {b:.3f}', linewidth=1.5, alpha=0.5),
+            ]
+            plt.legend(handles=legend_elements, loc='upper left', fontsize=11)
+            
+            # 设置坐标轴范围
+            plt.xlim(min(Z_array) - 2, max(Z_array) + 2)
+            plt.ylim(min(sqrt_E_array) - 1, max(sqrt_E_array) + 1)
+            plt.tight_layout()
+            
+            # 保存图像
+            if output_dir:
+                if image_name:
+                    output_image = os.path.join(output_dir, f"{image_name}.png")
+                else:
+                    output_image = os.path.join(output_dir, "moseley_law_fit.png")
+            else:
+                if image_name:
+                    output_image = f"{image_name}.png"
+                else:
+                    output_image = "moseley_law_fit.png"
+            plt.savefig(output_image, dpi=300, bbox_inches='tight')
+            generated_images.append(output_image)
+            print(f"  图像已保存到: {output_image}")
+            plt.close()
+    
+    print("\n" + "=" * 60)
+    print(f"生成完成！共生成 {len(generated_images)} 个图片")
+    print("=" * 60)
+    
+    return generated_images
+
+
 def main():
     """
     主函数
     """
     print("=" * 60)
-    print("MSL数据处理程序")
+    print("MSL数据处理程序 - 主函数")
     print("=" * 60)
     
     # 1. 获取MSL文件夹路径
@@ -576,10 +804,6 @@ def main():
         return
     
     print(f"  找到 {len(txt_files)} 个.txt文件")
-    for i, file_path in enumerate(txt_files[:5]):  # 只显示前5个文件
-        print(f"  {i+1}. {os.path.basename(file_path)}")
-    if len(txt_files) > 5:
-        print(f"  ... 还有 {len(txt_files) - 5} 个文件")
     
     # 3. 处理每个文件
     print("\n3. 处理文件并进行峰值拟合...")
@@ -595,19 +819,8 @@ def main():
         print("没有成功处理任何文件")
         return
     
-    # 4. 输出表格
-    print("\n4. 输出结果表格...")
-    print("\n" + "=" * 80)
-    print("元素名\t\t峰位置\t\t峰宽(FWHM)\t总事件数")
-    print("-" * 80)
-    
-    for result in results:
-        print(f"{result['element']:8s}\t{result['peak_position']:10.4f}\t{result['peak_fwhm']:10.4f}\t{result['total_events']:12,.0f}")
-    
-    print("=" * 80)
-    
-    # 5. 保存结果到CSV文件
-    print("\n5. 保存结果到CSV文件...")
+    # 4. 保存结果到CSV文件（保存到脚本所在目录，而不是Figures目录）
+    print("\n4. 保存结果到CSV文件...")
     output_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "msl_peak_results.csv")
     
     # 创建DataFrame
@@ -620,20 +833,6 @@ def main():
     df.to_csv(output_file, index=False, encoding='utf-8-sig')
     print(f"  结果已保存到: {output_file}")
     
-    # 显示DataFrame
-    print("\n完整结果表格:")
-    print(df.to_string(index=False))
-    
-    # 6. 绘制图像
-    test_plot(results)
-    
-    # 7. 绘制莫塞莱定律图像
-    sigma, r_squared = moseley_plot(results)
-    
     print("\n" + "=" * 60)
     print("处理完成！")
     print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()

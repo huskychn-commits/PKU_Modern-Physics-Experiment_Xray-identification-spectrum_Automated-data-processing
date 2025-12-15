@@ -1,6 +1,6 @@
 # X射线标识谱数据处理程序
 
-本目录包含X射线标识谱实验的数据处理程序，分为三个主要模块：Absorb（衰减分析）、Dose（剂量计算）和MSL（Moseley定律分析）。
+本目录包含X射线标识谱实验的数据处理程序，分为四个主要模块：Absorb（衰减分析）、Dose（剂量计算）、MSL（Moseley定律分析）和Compton（康普顿散射分析）。
 
 ## 目录结构
 
@@ -19,16 +19,18 @@
 ├── Dose/                     # 剂量计算模块
 │   ├── dose.py              # 剂量计算主程序
 │   └── dose_results.txt     # 计算结果
-└── MSL/                     # Moseley定律分析模块
-    ├── process_msl_data.py  # MSL数据处理
-    ├── 高斯峰拟合.py        # 高斯峰拟合程序
-    ├── xray_element_tool.py # X射线元素分析工具
-    ├── msl_linearfit.py     # Moseley定律线性拟合
-    ├── plot_kalpha_vs_z.py  # Kα线 vs 原子序数图
-    ├── plot_msl_vs_database.py  # 与数据库对比图
-    ├── element_database.json    # 元素数据库
-    ├── msl_peak_results.csv     # 峰位结果
-    └── 多个分析结果图
+├── MSL/                     # Moseley定律分析模块
+│   ├── process_msl_data.py  # MSL数据处理
+│   ├── 高斯峰拟合.py        # 高斯峰拟合程序
+│   ├── xray_element_tool.py # X射线元素分析工具
+│   ├── msl_linearfit.py     # Moseley定律线性拟合
+│   ├── plot_kalpha_vs_z.py  # Kα线 vs 原子序数图
+│   ├── plot_msl_vs_database.py  # 与数据库对比图
+│   ├── element_database.json    # 元素数据库
+│   ├── msl_peak_results.csv     # 峰位结果
+│   └── 多个分析结果图
+└── Compton.py               # 康普顿散射分析程序
+    Compton_scattering_plots.png  # 康普顿散射分析图
 ```
 
 ## 各模块功能说明
@@ -171,6 +173,50 @@ cd 数据/数据处理/MSL
 python plot_msl_vs_database.py
 ```
 
+### 4. Compton模块（康普顿散射分析）
+
+#### 4.1 Compton.py
+**功能**：计算康普顿散射中电子吸收的能量，针对17keV的光子撞击静止电子。
+
+**主要功能**：
+1. 计算电子吸收能量随光子散射角度的变化
+2. 计算电子反冲角（电子出射角）
+3. 计算康普顿散射的微分散射截面（Klein-Nishina公式）
+4. 计算总散射截面
+5. 计算电子获得的平均能量
+6. 生成多种可视化图表：
+   - 电子能量随角度变化图（笛卡尔坐标和极坐标）
+   - 能量贡献和微分散射截面图
+   - 关键物理量的极坐标可视化
+
+**物理公式**：
+- 康普顿散射公式：E' = E₀ / [1 + (E₀/(mₑc²)) * (1 - cosθ)]
+- 电子吸收能量：Eₑ = E₀ - E'
+- 电子反冲角：cotφ = (1 + E₀/(mₑc²)) * tan(θ/2)
+- Klein-Nishina微分散射截面：dσ/dΩ = (r₀²/2) * (E'/E₀)² * (E'/E₀ + E₀/E' - sin²θ)
+
+**使用方法**：
+```bash
+cd 数据/数据处理
+python Compton.py
+```
+
+**输出文件**：
+- `Compton_scattering_plots.png`：包含4个子图的综合可视化结果
+
+**关键计算结果**：
+- 光子初始能量：17.0 keV
+- 电子静止能量：511.0 keV
+- 最大电子能量（θ=π）：1.06 keV（占初始能量的6.2%）
+- 电子获得的平均能量：0.53 keV
+- 总散射截面：约2.49×10⁻²⁵ cm²
+
+**物理解释**：
+1. θ=0（前向散射）：电子获得最小能量（0 keV）
+2. θ=π（背向散射）：电子获得最大能量
+3. 曲线关于θ=0对称
+4. 对于17 keV光子，康普顿效应相对较小
+
 ## 数据处理流程
 
 ### 完整分析流程
@@ -208,6 +254,12 @@ python plot_msl_vs_database.py
    python plot_msl_vs_database.py
    ```
 
+5. **康普顿散射分析阶段**
+   ```bash
+   cd ..
+   python Compton.py
+   ```
+
 ## 关键结果
 
 ### 衰减分析结果
@@ -227,6 +279,14 @@ python plot_msl_vs_database.py
 - 获得了各元素的特征X射线峰位
 - 与数据库值对比验证了实验准确性
 
+### 康普顿散射分析结果
+- **光子初始能量**：17.0 keV
+- **电子静止能量**：511.0 keV
+- **最大电子能量（θ=π）**：1.06 keV（占初始能量的6.2%）
+- **电子获得的平均能量**：0.53 keV
+- **总散射截面**：约2.49×10⁻²⁵ cm²
+- **关键结论**：对于17 keV光子，康普顿效应相对较小，电子仅获得约6.2%的初始光子能量
+
 ## 注意事项
 
 1. **Python环境**：所有程序需要Python 3.x环境，并安装以下库：
@@ -243,6 +303,13 @@ python plot_msl_vs_database.py
 
 ## 更新日志
 
+### 2025-12-15
+- 添加Compton.py康普顿散射分析模块
+- 更新README文档，添加Compton模块功能说明
+- 更新目录结构，包含Compton.py和输出图像
+- 更新数据处理流程，添加康普顿散射分析阶段
+- 更新关键结果，添加康普顿散射分析结果
+
 ### 2025-12-08
 - 创建完整的README文档
 - 整理所有程序功能说明
@@ -250,6 +317,7 @@ python plot_msl_vs_database.py
 - 汇总关键分析结果
 
 ### 程序更新记录
+- `Compton.py`：新增康普顿散射分析程序，计算电子吸收能量和散射截面
 - `decay_rate.py`：修复了图例排序问题，按衰减率从大到小排序
 - `dose.py`：修复了中文编码问题，使用utf-8-sig编码
 - 所有程序：优化了错误处理和用户提示
@@ -259,4 +327,4 @@ python plot_msl_vs_database.py
 如有问题或建议，请联系相关实验人员。
 
 ---
-*本README最后更新于2025年12月8日*
+*本README最后更新于2025年12月15日*

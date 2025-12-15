@@ -22,7 +22,11 @@ import glob
 import re
 
 # 添加当前目录到路径，以便导入高斯峰拟合模块
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/MSL")
+# ReadData.py在bin/Absorb/目录下，高斯峰拟合.py在bin/MSL/目录下
+current_dir = os.path.dirname(os.path.abspath(__file__))  # bin/Absorb
+bin_dir = os.path.dirname(current_dir)  # bin
+msl_dir = os.path.join(bin_dir, "MSL")  # bin/MSL
+sys.path.insert(0, msl_dir)
 
 # 导入高斯峰拟合中的函数
 try:
@@ -51,11 +55,11 @@ def get_absorb_folder_path():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     # 构建Absorb文件夹路径
-    # 当前目录: D:\同步文件\课程作业\2025秋\近物实验\X射线标识谱\数据\数据处理\Absorb
-    # Absorb数据目录: D:\同步文件\课程作业\2025秋\近物实验\X射线标识谱\数据\Absorb
-    # 需要向上两级到数据目录，然后进入Absorb
-    data_dir = os.path.dirname(os.path.dirname(current_dir))
-    absorb_path = os.path.join(data_dir, "Absorb")
+    # 当前目录: D:\课程作业\2025秋\近物实验\X射线标识谱\数据\数据处理\bin\Absorb
+    # Absorb数据目录: D:\课程作业\2025秋\近物实验\X射线标识谱\数据\数据处理\bin\Absorb
+    # 需要向上两级到数据处理目录，然后进入bin/Absorb
+    data_processing_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+    absorb_path = os.path.join(data_processing_dir, "Absorb")
     
     return absorb_path
 
