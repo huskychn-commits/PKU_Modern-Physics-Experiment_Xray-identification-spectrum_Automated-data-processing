@@ -199,8 +199,16 @@ def get_raw_database_kalpha_energy(element_symbol):
         db = ElementDatabase()
         element_info = db.get_element_info(element_symbol)
         if element_info:
-            k_alpha_db = element_info['properties'].get('k_alpha_exp')
-            return k_alpha_db
+            # 首先尝试获取实验Kα线能量
+            k_alpha_exp = element_info['properties'].get('k_alpha_exp')
+            if k_alpha_exp is not None:
+                return k_alpha_exp
+            
+            # 如果实验数据不存在，使用相对论理论线
+            k_alpha_rel = db.get_k_alpha_energy_relativistic(element_symbol)
+            if k_alpha_rel is not None:
+                print(f"  注意: 元素 {element_symbol} 没有实验数据，使用相对论理论值: {k_alpha_rel:.4f} keV")
+                return k_alpha_rel
     except Exception as e:
         print(f"获取元素 {element_symbol} 的数据库Kα线能量失败: {e}")
     
@@ -429,79 +437,43 @@ def fit_linear_model_with_sigma(indices, elements, db_energies_raw):
     }
 
 
-def fit_linear_model(indices, energies):
-    """
-    拟合线性模型：E = b * index（旧版本，保持兼容性）
-    
-    参数:
-    indices: 峰位置数组
-    energies: 数据库能量数组
-    
-    返回:
-    dict: 包含拟合结果的字典
-    """
-    print("\n开始线性拟合...")
-    
-    # 使用最小二乘法直接计算b
-    # 对于模型 E = b * index，最小二乘解为：
-    # b = Σ(index_i * E_i) / Σ(index_i^2)
-    numerator = np.sum(indices * energies)
-    denominator = np.sum(indices ** 2)
-    
-    if denominator == 0:
-        print("错误: 分母为零，无法计算最小二乘解")
-        return None
-    
-    b_ls = numerator / denominator
-    print(f"最小二乘法直接计算: b = {b_ls:.6f}")
-    
-    # 使用最小二乘解作为最终结果
-    b_final = b_ls
-    print(f"最终拟合参数: b = {b_final:.6f}")
-    
-    # 计算拟合优度指标
-    predicted = indices * b_final
-    residuals = predicted - energies
-    ss_res = np.sum(residuals ** 2)
-    ss_tot = np.sum((energies - np.mean(energies)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
-    
-    # 计算平均绝对误差和均方根误差
-    mae = np.mean(np.abs(residuals))
-    rmse = np.sqrt(np.mean(residuals ** 2))
-    
-    print(f"拟合优度 R² = {r_squared:.6f}")
-    print(f"平均绝对误差 MAE = {mae:.6f} keV")
-    print(f"均方根误差 RMSE = {rmse:.6f} keV")
-    
-    return {
-        'b': b_final,
-        'b_ls': b_ls,
-        'loss': ss_res,
-        'r_squared': r_squared,
-        'mae': mae,
-        'rmse': rmse,
-        'predicted': predicted,
-        'residuals': residuals
-    }
-
-
-def plot_comparison(indices, energies, elements, fit_result):
+def plot_comparison(indices, energies, elements, fit_result=None):
     """
     绘制对比图：将MSL数据转换后的能量与数据库能量对比
     
     参数:
     indices: 峰位置数组
-    energies: 数据库能量数组（keV）
+    energies: 数据库能量数组（keV）- 修正后的能量（已应用sigma修正）
     elements: 元素符号数组
-    fit_result: 拟合结果字典
+    fit_result: 拟合结果字典（可选），如果为None则使用fit_linear_model_with_sigma重新拟合
     """
+    # 如果未提供fit_result，则使用fit_linear_model_with_sigma进行拟合
     if fit_result is None:
-        print("错误: 没有拟合结果，无法绘图")
-        return
+        print("未提供拟合结果，使用fit_linear_model_with_sigma进行拟合...")
+        
+        # 获取原始数据库能量（未修正）
+        db_energies_raw = []
+        for element in elements:
+            raw_energy = get_raw_database_kalpha_energy(element)
+            if raw_energy is not None:
+                db_energies_raw.append(raw_energy)
+            else:
+                print(f"错误: 无法获取元素 {element} 的原始数据库能量")
+                return
+        
+        db_energies_raw = np.array(db_energies_raw)
+        
+        # 使用fit_linear_model_with_sigma同时拟合b和sigma
+        fit_result = fit_linear_model_with_sigma(indices, elements, db_energies_raw)
+        
+        if fit_result is None:
+            print("错误: 拟合失败，无法绘图")
+            return
     
     b = fit_result['b']
+    sigma = fit_result.get('sigma', 2.0)  # 默认为2.0
     predicted = fit_result['predicted']
+    corrected_energies = fit_result.get('corrected_energies', energies)  # 修正后的数据库能量
     
     # 获取原子序数
     atomic_numbers = get_atomic_numbers(elements)
@@ -513,20 +485,20 @@ def plot_comparison(indices, energies, elements, fit_result):
     chinese_font_available = setup_chinese_font()
     
     # 第一个子图：能量对比散点图（横轴为原子序数）
-    ax1.scatter(atomic_numbers, energies, color='blue', s=80, 
-                label='数据库能量 (keV)', zorder=5, alpha=0.8)
+    ax1.scatter(atomic_numbers, corrected_energies, color='blue', s=80, 
+                label=f'数据库能量 (keV, σ={sigma:.2f})', zorder=5, alpha=0.8)
     ax1.scatter(atomic_numbers, predicted, color='red', s=80, marker='s',
                 label=f'MSL数据 × {b:.4f} (keV)', zorder=5, alpha=0.8)
     
     # 添加连接线
     for i in range(len(elements)):
-        ax1.plot([atomic_numbers[i], atomic_numbers[i]], [energies[i], predicted[i]], 
+        ax1.plot([atomic_numbers[i], atomic_numbers[i]], [corrected_energies[i], predicted[i]], 
                 'gray', linestyle='--', linewidth=1, alpha=0.5)
     
     # 添加数据标签（元素符号）
     for i in range(len(elements)):
         # 数据库能量点标签
-        ax1.text(atomic_numbers[i], energies[i], f' {elements[i]}', 
+        ax1.text(atomic_numbers[i], corrected_energies[i], f' {elements[i]}', 
                 fontsize=9, ha='left', va='bottom', alpha=0.8)
         # MSL转换能量点标签
         ax1.text(atomic_numbers[i], predicted[i], f' {elements[i]}', 
@@ -537,7 +509,7 @@ def plot_comparison(indices, energies, elements, fit_result):
     ax1.set_ylabel('能量 (keV)', fontsize=12)
     
     # 设置标题
-    ax1.set_title('MSL数据转换能量 vs 数据库Kα线能量 (按原子序数)', fontsize=14, fontweight='bold')
+    ax1.set_title(f'MSL数据转换能量 vs 数据库Kα线能量 (σ={sigma:.2f})', fontsize=14, fontweight='bold')
     
     # 添加网格和图例
     ax1.grid(True, alpha=0.3, linestyle='--')
@@ -558,7 +530,7 @@ def plot_comparison(indices, energies, elements, fit_result):
     ax2.set_ylabel('残差 (keV)', fontsize=12)
     
     # 设置标题
-    ax2.set_title('拟合残差 (实验值 - 数据库值) (按原子序数)', fontsize=14, fontweight='bold')
+    ax2.set_title('拟合残差 (实验值 - 数据库值)', fontsize=14, fontweight='bold')
     
     # 添加网格
     ax2.grid(True, alpha=0.3, linestyle='--')
@@ -578,16 +550,27 @@ def generate_figures(output_dir=None, image_name=None):
     参数:
     output_dir: 输出目录，如果为None则保存到脚本所在目录
     image_name: 图片名称（可选），用于指定生成哪个图片
-                None: 生成所有图片
-                "同时拟合sigma和道能量宽度": 只生成图III.1.4
-                "实验数据与相对论理论预言对比图": 只生成图III.1.5
+                现在只生成图III.1.4（通过对比实验数据和资料，确定道系数和屏蔽系数）
     """
     print("=" * 60)
-    print("MSL数据线性拟合 - 生成图片")
+    print("MSL数据线性拟合 - 生成图片（图III.1.4）")
     print("=" * 60)
     
     if image_name:
         print(f"指定生成图片: {image_name}")
+    
+    # 检查是否应该生成图III.1.4
+    if image_name:
+        # 提取图片名称中的描述部分（去掉"图III.1.4 - "前缀）
+        if " - " in image_name:
+            name_part = image_name.split(" - ", 1)[1]
+        else:
+            name_part = image_name
+        
+        # 只处理图III.1.4
+        if name_part != "通过对比实验数据和资料，确定道系数和屏蔽系数":
+            print(f"注意: 本程序只生成图III.1.4，跳过 {name_part}")
+            return []
     
     # 1. 加载MSL峰位置数据
     print("\n1. 加载MSL峰位置数据...")
@@ -638,28 +621,35 @@ def generate_figures(output_dir=None, image_name=None):
     indices = np.array(indices)
     energies = np.array(energies)
     
-    # 3. 执行线性拟合
-    print("\n3. 执行线性拟合...")
-    # 使用最小二乘法直接计算b
-    numerator = np.sum(indices * energies)
-    denominator = np.sum(indices ** 2)
+    # 3. 执行线性拟合（使用fit_linear_model_with_sigma同时拟合b和sigma）
+    print("\n3. 执行线性拟合（同时拟合b和sigma）...")
     
-    if denominator == 0:
-        print("错误: 分母为零，无法计算最小二乘解")
+    # 获取原始数据库能量（未修正）
+    db_energies_raw = []
+    for element in elements:
+        # 获取原始数据库能量（未修正）
+        raw_energy = get_raw_database_kalpha_energy(element)
+        if raw_energy is not None:
+            db_energies_raw.append(raw_energy)
+        else:
+            print(f"错误: 无法获取元素 {element} 的原始数据库能量")
+            return []
+    
+    db_energies_raw = np.array(db_energies_raw)
+    
+    # 使用fit_linear_model_with_sigma同时拟合b和sigma
+    fit_result = fit_linear_model_with_sigma(indices, elements, db_energies_raw)
+    
+    if fit_result is None:
+        print("错误: 拟合失败")
         return []
     
-    b = numerator / denominator
-    print(f"拟合参数: b = {b:.6f}")
+    b = fit_result['b']
+    sigma = fit_result.get('sigma', 2.0)
+    predicted = fit_result['predicted']
+    corrected_energies = fit_result.get('corrected_energies', energies)
     
-    # 计算预测能量
-    predicted = indices * b
-    
-    # 创建拟合结果字典，用于plot_comparison函数
-    fit_result = {
-        'b': b,
-        'predicted': predicted,
-        'residuals': predicted - energies
-    }
+    print(f"拟合参数: b = {b:.6f}, sigma = {sigma:.6f}")
     
     # 4. 生成图片
     generated_images = []
@@ -679,169 +669,86 @@ def generate_figures(output_dir=None, image_name=None):
     }
     atomic_numbers = [atomic_number_map.get(elem, 0) for elem in elements]
     
-    # 根据image_name参数决定生成哪些图片
-    generate_all = image_name is None
-    # 处理CSV文件中的图片名称
-    if image_name:
-        # 提取图片名称中的描述部分（去掉"图III.1.4 - "前缀）
-        if " - " in image_name:
-            name_part = image_name.split(" - ", 1)[1]
+    # 生成图III.1.4：同时拟合sigma和道能量宽度（双子图）- 使用plot_comparison函数
+    print("\n4. 生成同时拟合sigma和道能量宽度图（使用plot_comparison函数）...")
+    
+    # 创建图形 - 与plot_comparison函数相同的布局
+    fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+    
+    # 设置中文字体
+    chinese_font_available = setup_chinese_font()
+    
+    # 第一个子图：能量对比散点图（横轴为原子序数）
+    ax1.scatter(atomic_numbers, corrected_energies, color='blue', s=80, 
+                label=f'数据库能量 (keV, σ={sigma:.2f})', zorder=5, alpha=0.8)
+    ax1.scatter(atomic_numbers, predicted, color='red', s=80, marker='s',
+                label=f'MSL数据 × {b:.4f} (keV)', zorder=5, alpha=0.8)
+    
+    # 添加连接线
+    for i in range(len(elements)):
+        ax1.plot([atomic_numbers[i], atomic_numbers[i]], [corrected_energies[i], predicted[i]], 
+                'gray', linestyle='--', linewidth=1, alpha=0.5)
+    
+    # 添加数据标签（元素符号）
+    for i in range(len(elements)):
+        # 数据库能量点标签
+        ax1.text(atomic_numbers[i], corrected_energies[i], f' {elements[i]}', 
+                fontsize=9, ha='left', va='bottom', alpha=0.8)
+        # MSL转换能量点标签
+        ax1.text(atomic_numbers[i], predicted[i], f' {elements[i]}', 
+                fontsize=9, ha='right', va='top', alpha=0.8)
+    
+    # 设置x轴标签
+    ax1.set_xlabel('原子序数 Z', fontsize=12)
+    ax1.set_ylabel('能量 (keV)', fontsize=12)
+    
+    # 设置标题
+    ax1.set_title(f'MSL数据转换能量 vs 数据库Kα线能量 (σ={sigma:.2f})', fontsize=14, fontweight='bold')
+    
+    # 添加网格和图例
+    ax1.grid(True, alpha=0.3, linestyle='--')
+    ax1.legend(loc='upper left', fontsize=11)
+    
+    # 第二个子图：残差图（横轴为原子序数）
+    residuals = fit_result['residuals']
+    ax2.scatter(atomic_numbers, residuals, color='green', s=80, zorder=5, alpha=0.8)
+    ax2.axhline(y=0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+    
+    # 添加数据标签（元素符号）
+    for i in range(len(elements)):
+        ax2.text(atomic_numbers[i], residuals[i], f' {elements[i]}', 
+                fontsize=9, ha='center', va='bottom' if residuals[i] >= 0 else 'top', alpha=0.8)
+    
+    # 设置坐标轴标签
+    ax2.set_xlabel('原子序数 Z', fontsize=12)
+    ax2.set_ylabel('残差 (keV)', fontsize=12)
+    
+    # 设置标题
+    ax2.set_title('拟合残差 (实验值 - 数据库值)', fontsize=14, fontweight='bold')
+    
+    # 添加网格
+    ax2.grid(True, alpha=0.3, linestyle='--')
+    
+    # 调整布局
+    plt.tight_layout()
+    
+    # 保存图片
+    if output_dir:
+        if image_name:
+            # 使用image_name作为文件名
+            output_filename = os.path.join(output_dir, f"{image_name}.png")
         else:
-            name_part = image_name
-        
-        # 图III.1.4: "通过对比实验数据和资料，确定道系数和屏蔽系数" -> 对应图片1
-        # 图III.1.5: "实验数据与相对论理论预言对比图" -> 对应图片2
-        generate_fig1 = name_part == "通过对比实验数据和资料，确定道系数和屏蔽系数"
-        generate_fig2 = name_part == "实验数据与相对论理论预言对比图"
+            output_filename = os.path.join(output_dir, "同时拟合sigma和道能量宽度.png")
     else:
-        generate_fig1 = True
-        generate_fig2 = True
-    
-    # 图片1：同时拟合sigma和道能量宽度（双子图）
-    if generate_fig1:
-        print("\n4. 生成同时拟合sigma和道能量宽度图...")
-        fig1, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-        
-        # 第一个子图：能量对比散点图
-        ax1.scatter(atomic_numbers, energies, color='blue', s=80, 
-                    label='数据库能量 (keV)', zorder=5, alpha=0.8)
-        ax1.scatter(atomic_numbers, predicted, color='red', s=80, marker='s',
-                    label=f'MSL数据 × {b:.4f} (keV)', zorder=5, alpha=0.8)
-        
-        # 添加连接线
-        for i in range(len(elements)):
-            ax1.plot([atomic_numbers[i], atomic_numbers[i]], [energies[i], predicted[i]], 
-                    'gray', linestyle='--', linewidth=1, alpha=0.5)
-        
-        # 添加数据标签
-        for i in range(len(elements)):
-            ax1.text(atomic_numbers[i], energies[i], f' {elements[i]}', 
-                    fontsize=9, ha='left', va='bottom', alpha=0.8)
-            ax1.text(atomic_numbers[i], predicted[i], f' {elements[i]}', 
-                    fontsize=9, ha='right', va='top', alpha=0.8)
-        
-        ax1.set_xlabel('原子序数 Z', fontsize=12)
-        ax1.set_ylabel('能量 (keV)', fontsize=12)
-        ax1.set_title('MSL数据转换能量 vs 数据库Kα线能量', fontsize=14, fontweight='bold')
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.legend(loc='upper left', fontsize=11)
-        
-        # 第二个子图：残差图
-        residuals = predicted - energies
-        ax2.scatter(atomic_numbers, residuals, color='green', s=80, zorder=5, alpha=0.8)
-        ax2.axhline(y=0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-        
-        # 添加数据标签
-        for i in range(len(elements)):
-            ax2.text(atomic_numbers[i], residuals[i], f' {elements[i]}', 
-                    fontsize=9, ha='center', va='bottom' if residuals[i] >= 0 else 'top', alpha=0.8)
-        
-        ax2.set_xlabel('原子序数 Z', fontsize=12)
-        ax2.set_ylabel('残差 (keV)', fontsize=12)
-        ax2.set_title('拟合残差 (实验值 - 数据库值)', fontsize=14, fontweight='bold')
-        ax2.grid(True, alpha=0.3, linestyle='--')
-        
-        # 调整布局
-        plt.tight_layout()
-        
-        # 保存图片1
-        if output_dir:
-            if image_name and generate_fig1 and not generate_fig2:
-                # 如果只生成图片1，使用image_name作为文件名
-                output_filename1 = os.path.join(output_dir, f"{image_name}.png")
-            else:
-                output_filename1 = os.path.join(output_dir, "同时拟合sigma和道能量宽度.png")
+        if image_name:
+            output_filename = f"{image_name}.png"
         else:
-            if image_name and generate_fig1 and not generate_fig2:
-                output_filename1 = f"{image_name}.png"
-            else:
-                output_filename1 = "同时拟合sigma和道能量宽度.png"
-        
-        plt.savefig(output_filename1, dpi=300, bbox_inches='tight')
-        generated_images.append(output_filename1)
-        print(f"图片1已保存到: {output_filename1}")
-        plt.close()
+            output_filename = "同时拟合sigma和道能量宽度.png"
     
-    # 图片2：实验数据与相对论理论预言对比图
-    if generate_fig2:
-        print("\n5. 生成实验数据与相对论理论预言对比图...")
-        # 创建图形
-        fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-        
-        # 设置中文字体
-        chinese_font_available = setup_chinese_font()
-        
-        # 第一个子图：能量对比散点图（横轴为原子序数）
-        ax1.scatter(atomic_numbers, energies, color='blue', s=80, 
-                    label='数据库能量 (keV)', zorder=5, alpha=0.8)
-        ax1.scatter(atomic_numbers, predicted, color='red', s=80, marker='s',
-                    label=f'MSL数据 × {b:.4f} (keV)', zorder=5, alpha=0.8)
-        
-        # 添加连接线
-        for i in range(len(elements)):
-            ax1.plot([atomic_numbers[i], atomic_numbers[i]], [energies[i], predicted[i]], 
-                    'gray', linestyle='--', linewidth=1, alpha=0.5)
-        
-        # 添加数据标签（元素符号）
-        for i in range(len(elements)):
-            # 数据库能量点标签
-            ax1.text(atomic_numbers[i], energies[i], f' {elements[i]}', 
-                    fontsize=9, ha='left', va='bottom', alpha=0.8)
-            # MSL转换能量点标签
-            ax1.text(atomic_numbers[i], predicted[i], f' {elements[i]}', 
-                    fontsize=9, ha='right', va='top', alpha=0.8)
-        
-        # 设置x轴标签
-        ax1.set_xlabel('原子序数 Z', fontsize=12)
-        ax1.set_ylabel('能量 (keV)', fontsize=12)
-        
-        # 设置标题
-        ax1.set_title('实验数据与相对论理论预言对比 (按原子序数)', fontsize=14, fontweight='bold')
-        
-        # 添加网格和图例
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.legend(loc='upper left', fontsize=11)
-        
-        # 第二个子图：残差图（横轴为原子序数）
-        residuals = fit_result['residuals']
-        ax2.scatter(atomic_numbers, residuals, color='green', s=80, zorder=5, alpha=0.8)
-        ax2.axhline(y=0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
-        
-        # 添加数据标签（元素符号）
-        for i in range(len(elements)):
-            ax2.text(atomic_numbers[i], residuals[i], f' {elements[i]}', 
-                    fontsize=9, ha='center', va='bottom' if residuals[i] >= 0 else 'top', alpha=0.8)
-        
-        # 设置坐标轴标签
-        ax2.set_xlabel('原子序数 Z', fontsize=12)
-        ax2.set_ylabel('残差 (keV)', fontsize=12)
-        
-        # 设置标题
-        ax2.set_title('拟合残差 (实验值 - 数据库值) (按原子序数)', fontsize=14, fontweight='bold')
-        
-        # 添加网格
-        ax2.grid(True, alpha=0.3, linestyle='--')
-        
-        # 调整布局
-        plt.tight_layout()
-        
-        # 保存图片2
-        if output_dir:
-            if image_name and generate_fig2 and not generate_fig1:
-                # 如果只生成图片2，使用image_name作为文件名
-                output_filename2 = os.path.join(output_dir, f"{image_name}.png")
-            else:
-                output_filename2 = os.path.join(output_dir, "实验数据与相对论理论预言对比图.png")
-        else:
-            if image_name and generate_fig2 and not generate_fig1:
-                output_filename2 = f"{image_name}.png"
-            else:
-                output_filename2 = "实验数据与相对论理论预言对比图.png"
-        
-        plt.savefig(output_filename2, dpi=300, bbox_inches='tight')
-        generated_images.append(output_filename2)
-        print(f"图片2已保存到: {output_filename2}")
-        plt.close()
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    generated_images.append(output_filename)
+    print(f"图片已保存到: {output_filename}")
+    plt.close()
     
     print("\n" + "=" * 60)
     print(f"生成完成！共生成 {len(generated_images)} 个图片")

@@ -4,7 +4,7 @@
 
 本项目是一个自动化的X射线标识谱实验数据处理系统，能够根据实验数据自动生成实验报告中所需的所有图片。系统通过读取配置文件，按顺序调用相应的数据处理脚本，生成标准化的实验图片。
 
-## 🚀 最简单使用方法
+## 🚀 傻瓜式使用方法（三步搞定）
 
 如果你只想快速生成实验报告图片，请按以下步骤操作：
 
@@ -59,8 +59,8 @@
 | 图III.1.1 | 信号处理例 | `MSL/高斯峰拟合.py` | 展示高斯峰拟合的信号处理示例 |
 | 图III.1.2 | 谱线与原子序数关系图 | `MSL/process_msl_data.py` | 展示谱线位置与原子序数的关系 |
 | 图III.1.3 | 莫塞莱定律的验证 | `MSL/process_msl_data.py` | 验证莫塞莱定律的实验数据 |
-| 图III.1.4 | 通过对比实验数据和资料，确定道系数和屏蔽系数 | `MSL/msl_linearfit_Sigma=2.py` | 确定道系数和屏蔽系数的对比分析 |
-| 图III.1.5 | 实验数据与相对论理论预言对比图 | `MSL/msl_linearfit_Sigma=2.py` | 实验数据与相对论理论预言的对比 |
+| 图III.1.4 | 通过对比实验数据和资料，确定道系数和屏蔽系数 | `MSL/msl_linearfit_Sigma2.py` | 确定道系数和屏蔽系数的对比分析 |
+| 图III.1.5 | 实验数据与相对论理论预言对比图 | `MSL/plot_msl_vs_database.py` | 实验数据与相对论理论预言的对比 |
 | 图III.2.1 | 不同靶材特征谱线在铝板中的衰减 | `Absorb/decay_rate.py` | 不同靶材特征谱线在铝板中的衰减曲线 |
 | 图III.2.2 | 不同靶材特征谱线在铝板中的衰减系数 | `Absorb/decay_rate.py` | 衰减系数的统计分析 |
 | 图III.2.3 | 经验标度率的确定 | `Absorb/decay_rate.py` | 经验标度率的确定与分析 |
@@ -172,7 +172,13 @@ Auto.py程序的工作流程如下：
 
 ## 版本历史
 
-- v1.0 (2025-12-16): 实现了全自动图像生成系统
+- v1.1 (2025-12-16): 修复关键bug，优化用户体验
+  - **修复图III.1.4的bug**：原`msl_linearfit_Sigma=2.py`文件名包含`=`字符导致导入失败而只能使用sigma非修正的版本；现已更正文件名及相关调用方法
+  - **修复图III.1.5的bug**：找回`plot_msl_vs_database.py`并添加`generate_figures()`函数，修正了先前与图III.1.4完全一样的问题
+  - **更新配置表**：同步更新`bin/实验报告图片生成对应表.csv`中的脚本路径
+  - **添加傻瓜式使用方法与指南**：新增"傻瓜式使用方法"指南部分，提供从下载到运行的全流程指导，优化用户体验
+
+- v1.0 (2025-12-15): 实现了全自动图像生成系统
   - 创建Auto.py主程序
   - 重构项目结构，将脚本组织到bin/目录
   - 添加.gitignore忽略生成的文件
@@ -181,6 +187,120 @@ Auto.py程序的工作流程如下：
 ## 作者
 
 北京大学 陈思源
+
+## 附录：参考文件系统结构
+
+以下是一个实际的文件系统结构示例（基于 `D:\课程作业\2025秋\近物实验\X射线标识谱\数据` 目录），供参考使用：
+
+```
+数据\
+├── 数据处理\                    # 自动化处理工具目录
+│   ├── Auto.py                # 主程序
+│   ├── README.md              # 说明文档（本文件）
+│   ├── YouOnlyNeedToDownloadThis.zip  # 压缩包
+│   ├── bin\                   # 数据处理脚本
+│   │   ├── 实验报告图片生成对应表.csv
+│   │   ├── Absorb\           # 吸收实验脚本
+│   │   ├── MSL\              # 莫塞莱定律实验脚本
+│   │   └── Compton.py        # 康普顿散射脚本
+│   └── Figures\              # 生成的图片保存目录
+├── MSL\                       # 莫塞莱实验原始数据
+│   ├── MSL_N4000000_Ag.txt   # 银(Ag)元素数据
+│   ├── MSL_N4000000_Co.txt   # 钴(Co)元素数据
+│   ├── MSL_N4000000_Cu.txt   # 铜(Cu)元素数据
+│   ├── MSL_N4000000_Fe.txt   # 铁(Fe)元素数据
+│   ├── MSL_N4000000_Mo.txt   # 钼(Mo)元素数据
+│   ├── MSL_N4000000_Ni.txt   # 镍(Ni)元素数据
+│   ├── MSL_N4000000_Se.txt   # 硒(Se)元素数据
+│   ├── MSL_N4000000_Sr.txt   # 锶(Sr)元素数据
+│   ├── MSL_N4000000_Ti.txt   # 钛(Ti)元素数据
+│   ├── MSL_N4000000_Zn.txt   # 锌(Zn)元素数据
+│   └── MSL_N4000000_Zr.txt   # 锆(Zr)元素数据
+├── Absorb\                    # 铝片吸收实验原始数据
+│   ├── Ag\                   # 银元素吸收数据（示例详细结构）
+│   │   ├── clearAllResult.sh
+│   │   ├── createRun.sh
+│   │   ├── SAg_E22.1N1000000Sn0Layers.txt  # 0层铝片数据
+│   │   ├── SAg_E22.1N1000000Sn1Layers.txt  # 1层铝片数据
+│   │   ├── SAg_E22.1N1000000Sn2Layers.txt  # 2层铝片数据
+│   │   ├── SAg_E22.1N1000000Sn4Layers.txt  # 4层铝片数据
+│   │   ├── SAg_E22.1N1000000Sn8Layers.txt  # 8层铝片数据
+│   │   ├── SAg_E22.1N1000000Sn16Layers.txt # 16层铝片数据
+│   │   └── SAg_E22.1N1000000Sn32Layers.txt # 32层铝片数据
+│   ├── Co\                   # 钴元素吸收数据（类似结构）
+│   │   ├── SCo_E6.925N1000000Sn0Layers.txt  # 0层铝片数据
+│   │   ├── SCo_E6.925N1000000Sn1Layers.txt  # 1层铝片数据
+│   │   ├── SCo_E6.925N1000000Sn2Layers.txt  # 2层铝片数据
+│   │   ├── SCo_E6.925N1000000Sn3Layers.txt  # 3层铝片数据
+│   │   ├── SCo_E6.925N1000000Sn4Layers.txt  # 4层铝片数据
+│   │   ├── SCo_E6.925N1000000Sn5Layers.txt  # 5层铝片数据
+│   │   └── SCo_E6.925N1000000Sn6Layers.txt  # 6层铝片数据
+│   ├── Cu\                   # 铜元素吸收数据（类似结构）
+│   │   ├── SCu_E8.041N1000000Sn0Layers.txt
+│   │   ├── SCu_E8.041N1000000Sn1Layers.txt
+│   │   ├── SCu_E8.041N1000000Sn2Layers.txt
+│   │   ├── SCu_E8.041N1000000Sn3Layers.txt
+│   │   ├── SCu_E8.041N1000000Sn4Layers.txt
+│   │   ├── SCu_E8.041N1000000Sn5Layers.txt
+│   │   └── SCu_E8.041N1000000Sn6Layers.txt
+│   ├── Fe\                   # 铁元素吸收数据（类似结构）
+│   │   ├── SFe_E6.403N100000Sn0Layers.txt
+│   │   ├── SFe_E6.403N100000Sn1Layers.txt
+│   │   ├── SFe_E6.403N100000Sn2Layers.txt
+│   │   ├── SFe_E6.403N100000Sn3Layers.txt
+│   │   ├── SFe_E6.403N100000Sn4Layers.txt
+│   │   ├── SFe_E6.403N100000Sn5Layers.txt
+│   │   └── SFe_E6.403N100000Sn6Layers.txt
+│   ├── Mo\                   # 钼元素吸收数据（类似结构）
+│   ├── Ni\                   # 镍元素吸收数据（类似结构）
+│   ├── Se\                   # 硒元素吸收数据（类似结构）
+│   ├── Sr\                   # 锶元素吸收数据（类似结构）
+│   ├── Ti\                   # 钛元素吸收数据（类似结构）
+│   ├── Zn\                   # 锌元素吸收数据（类似结构）
+│   └── Zr\                   # 锆元素吸收数据（类似结构）
+└── Dose\                     # 模拟人体吸收剂量实验原始数据
+    ├── B1\                   # B1剂量数据（本实验未使用）
+    └── ICRP145_HumanPhantomsAir\  # ICRP145人体模型数据（实际使用的数据）
+        ├── CMakeLists.txt
+        ├── example_female.out
+        ├── example_male.out
+        ├── example.in
+        ├── History
+        ├── ICRP145phantoms.cc
+        ├── ICRP145Phantoms.out
+        ├── init_vis.mac
+        ├── ionCs137.mac
+        ├── README
+        ├── README_general
+        ├── source.mac
+        ├── vis.mac
+        ├── bin\               # 关键数据文件目录
+        │   ├── Am241.out     # 镅-241剂量数据（实际使用）
+        │   ├── clean.sh
+        │   ├── cmake_install.cmake
+        │   ├── CMakeCache.txt
+        │   ├── Cs137.out     # 铯-137剂量数据（实际使用）
+        │   ├── example.in
+        │   ├── G4History.macro
+        │   ├── ICRP145phantoms
+        │   ├── init_vis.mac
+        │   ├── ionAm241.out
+        │   ├── ionCs137.mac
+        │   ├── Makefile
+        │   ├── Pu238.out     # 钚-238剂量数据（实际使用）
+        │   ├── source.mac
+        │   ├── vis.mac
+        │   ├── CMakeFiles\
+        │   ├── ICRP145data\
+        │   └── ICRP145data-prefix\
+        ├── include\
+        └── src\
+```
+
+**重要说明**：
+1. 此结构仅供参考，实际目录名称和位置可能有所不同
+2. 关键要求：`MSL\`、`Absorb\`、`Dose\` 和 `数据处理\` 这四个目录必须在同一父目录下
+3. 如果遇到文件找不到的错误，请检查实际文件路径是否与此结构匹配
 
 ## 许可证
 

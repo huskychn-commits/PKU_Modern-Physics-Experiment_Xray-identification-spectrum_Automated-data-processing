@@ -420,6 +420,213 @@ def plot_comparison(b_value, sigma=2.0):
         print(f"平均绝对残差: {avg_abs_residual:.4f} keV")
 
 
+def generate_figures(output_dir=None, image_name=None):
+    """
+    生成MSL转换能量与数据库Kα线能量对比图
+    
+    参数:
+    output_dir: 输出目录，如果为None则保存到脚本所在目录
+    image_name: 图片名称（可选），用于指定生成哪个图片
+    """
+    print("=" * 60)
+    print("MSL转换能量与数据库Kα线能量对比 - 生成图片")
+    print("=" * 60)
+    
+    if image_name:
+        print(f"指定生成图片: {image_name}")
+    
+    # 获取b值
+    print("\n1. 获取MSL index到keV的转换系数b...")
+    b_value = get_b_value_from_fitting()
+    print(f"   获取到的b值: {b_value:.6f}")
+    
+    # 绘制对比图（使用默认sigma=2.0）
+    print("\n2. 绘制MSL转换能量与数据库Kα线能量对比图...")
+    sigma = 2.0  # 默认sigma值
+    
+    # 调用plot_comparison函数，但修改它以支持保存到指定目录
+    # 由于plot_comparison函数显示图形但不保存，我们需要修改它
+    # 这里我们创建一个简化的版本
+    
+    # 加载MSL数据
+    print("加载MSL数据...")
+    msl_df = load_msl_data()
+    if msl_df is None:
+        return []
+    
+    # 收集数据库数据
+    print("收集数据库数据...")
+    db_Z, db_exp, db_nonrel, db_rel, db_symbols = collect_database_data()
+    if db_Z is None:
+        return []
+    
+    # 准备MSL数据
+    msl_Z = []
+    msl_energies = []
+    msl_symbols = []
+    msl_errors = []
+    
+    for _, row in msl_df.iterrows():
+        element = row['element']
+        index = row['peak_position']
+        std = row['peak_std']
+        
+        # 获取原子序数
+        Z = get_atomic_number(element)
+        if Z is None:
+            print(f"警告: 无法获取元素 {element} 的原子序数，跳过")
+            continue
+        
+        # 转换能量：E = index × b
+        energy = index * b_value
+        error = std * b_value  # 误差传播
+        
+        msl_Z.append(Z)
+        msl_energies.append(energy)
+        msl_symbols.append(element)
+        msl_errors.append(error)
+    
+    if not msl_Z:
+        print("错误: 没有有效的MSL数据")
+        return []
+    
+    # 应用修正因子到数据库数据
+    print("\n应用修正因子到数据库数据...")
+    db_exp_corrected = []
+    db_nonrel_corrected = []
+    db_rel_corrected = []
+    
+    for i, Z in enumerate(db_Z):
+        # 计算修正因子 (Z-sigma)/(Z-1)
+        if Z > 1 and Z - 1 != 0:
+            correction_factor = (Z - sigma) / (Z - 1)
+        else:
+            correction_factor = 1.0
+            print(f"警告: 元素 {db_symbols[i]} (Z={Z}) 的Z-1=0，无法计算修正因子，使用1.0")
+        
+        # 应用修正因子
+        if db_exp[i] is not None:
+            db_exp_corrected.append(db_exp[i] * correction_factor)
+        else:
+            db_exp_corrected.append(None)
+        
+        db_nonrel_corrected.append(db_nonrel[i] * correction_factor)
+        db_rel_corrected.append(db_rel[i] * correction_factor)
+    
+    # 创建图形
+    fig, ax = plt.subplots(figsize=(12, 8))
+    
+    # 设置中文字体
+    chinese_font_available = setup_chinese_font()
+    
+    print("\n绘制数据库数据与MSL转换数据对比图...")
+    
+    # 绘制数据库理论线（使用修正后的数据）
+    db_Z_array = np.array(db_Z)
+    db_rel_corrected_array = np.array(db_rel_corrected)
+    
+    # 对原子序数进行排序以便绘制平滑曲线
+    sorted_indices = np.argsort(db_Z_array)
+    db_Z_sorted = db_Z_array[sorted_indices]
+    db_rel_corrected_sorted = db_rel_corrected_array[sorted_indices]
+    
+    # 绘制修正后的相对论理论线
+    ax.plot(db_Z_sorted, db_rel_corrected_sorted, 'b-', linewidth=1, 
+             label='数据库相对论理论线（修正后）', zorder=2, alpha=0.6)
+    
+    # 绘制数据库实验数据点（使用修正后的数据，绿色横线格式）
+    exp_Z = []
+    exp_E_corrected = []
+    for i, (Z, exp_corrected) in enumerate(zip(db_Z, db_exp_corrected)):
+        if exp_corrected is not None:
+            exp_Z.append(Z)
+            exp_E_corrected.append(exp_corrected)
+    
+    if exp_Z:
+        # 使用绿色横线表示修正后的数据库实验数据点
+        for Z, energy in zip(exp_Z, exp_E_corrected):
+            ax.hlines(y=energy, xmin=Z-0.3, xmax=Z+0.3, color='green', 
+                      linewidth=1.5, alpha=0.7, zorder=5)
+    
+    # 绘制MSL转换数据点
+    for i, (Z, energy, error) in enumerate(zip(msl_Z, msl_energies, msl_errors)):
+        # 绘制红色横线表示峰位置
+        ax.hlines(y=energy, xmin=Z-0.3, xmax=Z+0.3, color='red', 
+                  linewidth=1.5, alpha=0.7, zorder=6)
+        
+        # 绘制灰色虚线表示E±σ范围
+        ax.hlines(y=energy+error, xmin=Z-0.2, xmax=Z+0.2, color='gray', 
+                  linewidth=1, alpha=0.6, linestyle='--', zorder=5)
+        ax.hlines(y=energy-error, xmin=Z-0.2, xmax=Z+0.2, color='gray', 
+                  linewidth=1, alpha=0.6, linestyle='--', zorder=5)
+        
+        # 绘制灰色垂直线连接E±σ
+        ax.vlines(x=Z, ymin=energy-error, ymax=energy+error, color='gray', 
+                  linewidth=1, alpha=0.6, zorder=5)
+    
+    # 添加元素符号标签（MSL数据）
+    for i, (Z, energy, symbol) in enumerate(zip(msl_Z, msl_energies, msl_symbols)):
+        ax.text(Z, energy + msl_errors[i] + 0.5, symbol, fontsize=9, 
+                ha='center', va='bottom', alpha=0.8, zorder=7)
+    
+    # 设置坐标轴标签
+    ax.set_xlabel('原子序数 Z', fontsize=12)
+    ax.set_ylabel('能量 (keV)', fontsize=12)
+    
+    # 添加网格和图例
+    ax.grid(True, alpha=0.3, linestyle='--')
+    
+    # 创建自定义图例项
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='blue', label='数据库相对论理论线（修正后）',
+               linewidth=1, alpha=0.6),
+        Line2D([0], [0], color='green', label='数据库实验数据（修正后）',
+               linewidth=1.5, alpha=0.7),
+        Line2D([0], [0], color='red', label='MSL转换峰位置',
+               linewidth=1.5, alpha=0.7),
+        Line2D([0], [0], color='gray', linestyle='--', label='MSL E±σ范围',
+               linewidth=1, alpha=0.6)
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', fontsize=11)
+    
+    # 设置坐标轴范围
+    all_Z = msl_Z + db_Z
+    all_E = msl_energies + db_rel_corrected
+    ax.set_xlim(min(all_Z) - 2, max(all_Z) + 2)
+    ax.set_ylim(0, max(all_E) * 1.1)
+    
+    # 设置标题
+    ax.set_title(f'MSL转换能量 vs 数据库Kα线能量 (b={b_value:.6f}, σ={sigma:.6f})', fontsize=14, fontweight='bold')
+    
+    # 调整布局
+    plt.tight_layout()
+    
+    # 保存图像
+    if output_dir:
+        if image_name:
+            output_filename = os.path.join(output_dir, f"{image_name}.png")
+        else:
+            output_filename = os.path.join(output_dir, "msl_vs_database_comparison.png")
+    else:
+        if image_name:
+            output_filename = f"{image_name}.png"
+        else:
+            output_filename = "msl_vs_database_comparison.png"
+    
+    plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+    print(f"\n图像已保存到: {output_filename}")
+    plt.close()
+    
+    generated_images = [output_filename]
+    
+    print("\n" + "=" * 60)
+    print(f"生成完成！共生成 {len(generated_images)} 个图片")
+    print("=" * 60)
+    
+    return generated_images
+
+
 def main():
     """主函数"""
     print("=" * 60)
